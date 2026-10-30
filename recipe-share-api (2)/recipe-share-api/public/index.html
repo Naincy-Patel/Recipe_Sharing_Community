@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Recipe Share</title>
+  <style>
+    :root {
+      --bg: #faf7f2;
+      --card: #fff;
+      --tx: #2b2622;
+      --mut: #7a6f66;
+      --ac: #d9622b;
+      --bd: #e8e0d6
+    }
+
+    @media(prefers-color-scheme:dark) {
+      :root {
+        --bg: #1b1815;
+        --card: #26221e;
+        --tx: #f1ebe4;
+        --mut: #a39a90;
+        --ac: #f08650;
+        --bd: #3a342e
+      }
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--tx)
+    }
+
+    a {
+      cursor: pointer;
+      color: var(--ac);
+      text-decoration: none
+    }
+
+    #nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px 20px;
+      background: var(--card);
+      border-bottom: 1px solid var(--bd);
+      position: sticky;
+      top: 0;
+      z-index: 5
+    }
+
+    #nav span {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap
+    }
+
+    .brand {
+      font-weight: 700;
+      font-size: 1.2rem
+    }
+
+    main {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px
+    }
+
+    .bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 18px
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      font: inherit;
+      padding: 9px 12px;
+      border: 1px solid var(--bd);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--tx)
+    }
+
+    .bar input {
+      flex: 1;
+      min-width: 160px
+    }
+
+    button {
+      background: var(--ac);
+      color: #fff;
+      border: 0;
+      cursor: pointer
+    }
+
+    button.alt {
+      background: var(--card);
+      color: var(--tx);
+      border: 1px solid var(--bd)
+    }
+
+    button:disabled {
+      opacity: .4
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--bd);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer
+    }
+
+    .ph {
+      height: 150px;
+      background: var(--bd);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem
+    }
+
+    .ph img,
+    .hero img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover
+    }
+
+    .cb {
+      padding: 12px
+    }
+
+    .cb h3 {
+      margin: 0 0 4px
+    }
+
+    .mut {
+      color: var(--mut);
+      font-size: .9rem;
+      margin: 2px 0
+    }
+
+    .pager {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 14px;
+      margin-top: 20px
+    }
+
+    .box {
+      background: var(--card);
+      border: 1px solid var(--bd);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px
+    }
+
+    .hero {
+      height: 260px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--bd);
+      margin-bottom: 14px
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: 12px 0
+    }
+
+    form.f {
+      display: grid;
+      gap: 10px;
+      max-width: 560px
+    }
+
+    form.f label {
+      display: grid;
+      gap: 4px;
+      font-size: .9rem;
+      color: var(--mut)
+    }
+
+    .cm {
+      border-top: 1px solid var(--bd);
+      padding: 10px 0
+    }
+
+    #toast {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--tx);
+      color: var(--bg);
+      padding: 10px 18px;
+      border-radius: 8px;
+      z-index: 9
+    }
+  </style>
+</head>
+
+<body>
+  <div id="nav"></div>
+  <main id="app"></main>
+  <div id="toast"></div>
+  <script>
+    const API = location.protocol === 'file:' ? 'http://localhost:5000' : '';
+    const $ = s => document.querySelector(s);
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const CATS = ['breakfast', 'lunch', 'dinner', 'dessert', 'snack', 'drink', 'other'];
+    let me = null; try { me = JSON.parse(localStorage.getItem('rs_user')); } catch { }
+    let q = { q: '', category: '', sort: 'latest', page: 1 }, cur = { view: 'home' }, authMode = 'login';
+
+    const api = async (p, o = {}) => {
+      const h = {}; if (me) h.Authorization = 'Bearer ' + me.token;
+      let b = o.body; if (b && !(b instanceof FormData)) { h['Content-Type'] = 'application/json'; b = JSON.stringify(b); }
+      const r = await fetch(API + '/api' + p, { method: o.method || 'GET', headers: h, body: b });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.message || 'Request failed');
+      return d;
+    };
+    const toast = m => { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2500); };
+    const card = r => `<article class="card" data-go="recipe" data-id="${r._id}"><div class="ph">${r.image ? `<img src="${esc(API + r.image)}" alt="">` : '🍲'}</div><div class="cb"><h3>${esc(r.title)}</h3><p class="mut">by ${esc(r.author?.username || '')}</p><p class="mut">⏱ ${r.cookTime}m · ★ ${r.avgRating} (${r.ratingsCount}) · ♥ ${r.likesCount}</p></div></article>`;
+    const grid = list => list.length ? `<div class="grid">${list.map(card).join('')}</div>` : '<p class="mut">Nothing here yet.</p>';
+
+    function nav() {
+      $('#nav').innerHTML = `<a data-go="home" class="brand">🍳 Recipe Share</a><span>${me
+        ? `<a data-go="add">+ Add recipe</a><a data-go="saved">Saved</a><a data-go="profile" data-id="${me._id}">${esc(me.username)}</a><a data-act="logout">Logout</a>`
+        : `<a data-go="auth">Login / Sign up</a>`}</span>`;
+    }
+
+    async function home() {
+      $('#app').innerHTML = `<form data-form="search" class="bar"><input name="q" placeholder="Search recipes…" value="${esc(q.q)}">
+  <select name="category"><option value="">All categories</option>${CATS.map(c => `<option ${c === q.category ? 'selected' : ''}>${c}</option>`).join('')}</select>
+  <select name="sort">${['latest', 'popular', 'rated'].map(s => `<option ${s === q.sort ? 'selected' : ''}>${s}</option>`).join('')}</select><button>Search</button></form><div id="list">Loading…</div>`;
+      const d = await api('/recipes?' + new URLSearchParams({ ...q, limit: 9 }));
+      $('#list').innerHTML = grid(d.recipes) + `<div class="pager"><button class="alt" data-act="page" data-d="-1" ${d.page <= 1 ? 'disabled' : ''}>←</button><span>Page ${d.page} of ${d.pages || 1}</span><button class="alt" data-act="page" data-d="1" ${d.page >= d.pages ? 'disabled' : ''}>→</button></div>`;
+    }
+
+    async function recipe(id) {
+      const [r, cs] = await Promise.all([api('/recipes/' + id), api(`/recipes/${id}/comments`)]);
+      const mine = me && (me._id === r.author._id || me.role === 'admin');
+      $('#app').innerHTML = `<div class="hero">${r.image ? `<img src="${esc(API + r.image)}" alt="">` : '<div class="ph" style="height:100%">🍲</div>'}</div>
+  <h1>${esc(r.title)}</h1>
+  <p class="mut">by <a data-go="profile" data-id="${r.author._id}">${esc(r.author.username)}</a> · ${esc(r.category)} · ${esc(r.difficulty)} · ⏱ ${r.cookTime} min · serves ${r.servings}</p>
+  <p>${esc(r.description)}</p>
+  <div class="row"><button data-act="like">${r.liked ? '♥ Liked' : '♡ Like'} (${r.likesCount})</button>
+  <button class="alt" data-act="save">${r.bookmarked ? '★ Saved' : '☆ Save'}</button>
+  <span>★ ${r.avgRating} (${r.ratingsCount}) · Rate:</span>
+  <select data-rate>${[0, 1, 2, 3, 4, 5].map(n => `<option value="${n}" ${n === (r.myRating || 0) ? 'selected' : ''}>${n || '–'}</option>`).join('')}</select>
+  ${mine ? '<button class="alt" data-act="del">Delete</button>' : ''}</div>
+  <div class="box"><h3>Ingredients</h3><ul>${r.ingredients.map(i => `<li>${esc(i.quantity)} ${esc(i.name)}</li>`).join('')}</ul>
+  <h3>Steps</h3><ol>${r.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+  <p class="mut">${r.tags.map(t => '#' + esc(t)).join(' ')}</p></div>
+  <div class="box"><h3>Comments (${cs.length})</h3>
+  ${me ? `<form data-form="comment" class="bar"><input name="text" placeholder="Add a comment…" required maxlength="500"><button>Post</button></form>` : '<p class="mut">Log in to comment.</p>'}
+  ${cs.map(c => `<div class="cm"><b>${esc(c.user.username)}</b> <span class="mut">${new Date(c.createdAt).toLocaleDateString()}</span>
+  ${me && (me._id === c.user._id || me.role === 'admin') ? `<a data-act="delc" data-cid="${c._id}">delete</a>` : ''}<br>${esc(c.text)}</div>`).join('')}</div>`;
+    }
+
+    function auth() {
+      const reg = authMode === 'register';
+      $('#app').innerHTML = `<div class="box"><h2>${reg ? 'Create account' : 'Log in'}</h2><form data-form="auth" class="f">
+  ${reg ? '<label>Username<input name="username" required minlength="3"></label>' : ''}
+  <label>Email<input name="email" type="email" required></label>
+  <label>Password<input name="password" type="password" required minlength="6"></label>
+  <button>${reg ? 'Sign up' : 'Log in'}</button></form>
+  <p class="mut">${reg ? 'Already have an account?' : 'New here?'} <a data-act="toggleauth">${reg ? 'Log in' : 'Sign up'}</a></p></div>`;
+    }
+
+    function add() {
+      $('#app').innerHTML = `<div class="box"><h2>Share a recipe</h2><form data-form="add" class="f">
+  <label>Title<input name="title" required maxlength="120"></label>
+  <label>Description<textarea name="description" rows="3" required></textarea></label>
+  <label>Ingredients (one per line, e.g. "2 cups | Flour")<textarea name="ingredients" rows="5" required></textarea></label>
+  <label>Steps (one per line)<textarea name="steps" rows="5" required></textarea></label>
+  <label>Category<select name="category">${CATS.map(c => `<option>${c}</option>`).join('')}</select></label>
+  <label>Difficulty<select name="difficulty"><option>easy</option><option>medium</option><option>hard</option></select></label>
+  <label>Cook time (minutes)<input name="cookTime" type="number" min="0" value="30"></label>
+  <label>Servings<input name="servings" type="number" min="1" value="2"></label>
+  <label>Tags (comma separated)<input name="tags"></label>
+  <label>Photo<input name="image" type="file" accept="image/*"></label>
+  <button>Publish</button></form></div>`;
+    }
+
+    async function profile(id) {
+      const u = await api('/users/' + id);
+      const self = me && me._id === u._id;
+      $('#app').innerHTML = `<div class="box"><h2>${esc(u.username)}</h2><p>${esc(u.bio)}</p>
+  <p class="mut">${u.followersCount} followers · ${u.followingCount} following · ${u.recipes.length} recipes</p>
+  ${me && !self ? `<button data-act="follow" data-id="${u._id}">${u.isFollowing ? 'Unfollow' : 'Follow'}</button>` : ''}</div>
+  ${grid(u.recipes.map(r => ({ ...r, author: { username: u.username } })))}`;
+    }
+
+    async function saved() { $('#app').innerHTML = '<h2>Saved recipes</h2>' + grid(await api('/users/me/bookmarks')); }
+
+    const views = { home, recipe, auth, add, profile, saved };
+    async function go(view, id) {
+      if (['add', 'saved'].includes(view) && !me) { toast('Please log in first'); view = 'auth'; }
+      cur = { view, id }; nav(); window.scrollTo(0, 0);
+      try { await views[view](id); } catch (e) { $('#app').innerHTML = `<p>${esc(e.message)}</p>`; }
+    }
+    const setUser = u => { me = u; u ? localStorage.setItem('rs_user', JSON.stringify(u)) : localStorage.removeItem('rs_user'); };
+
+    document.addEventListener('click', async e => {
+      const g = e.target.closest('[data-go]'); if (g) { e.preventDefault(); return go(g.dataset.go, g.dataset.id); }
+      const a = e.target.closest('[data-act]'); if (!a) return;
+      const act = a.dataset.act, id = cur.id;
+      try {
+        if (act === 'logout') { setUser(null); return go('home'); }
+        if (act === 'toggleauth') { authMode = authMode === 'login' ? 'register' : 'login'; return auth(); }
+        if (act === 'page') { q.page += +a.dataset.d; return home(); }
+        if (!me) { toast('Please log in first'); return go('auth'); }
+        if (act === 'like') { await api(`/recipes/${id}/like`, { method: 'POST' }); recipe(id); }
+        if (act === 'save') { await api(`/recipes/${id}/bookmark`, { method: 'POST' }); recipe(id); }
+        if (act === 'follow') { await api(`/users/${a.dataset.id}/follow`, { method: 'POST' }); profile(a.dataset.id); }
+        if (act === 'delc') { await api(`/recipes/${id}/comments/${a.dataset.cid}`, { method: 'DELETE' }); recipe(id); }
+        if (act === 'del' && confirm('Delete this recipe?')) { await api('/recipes/' + id, { method: 'DELETE' }); toast('Deleted'); go('home'); }
+      } catch (x) { toast(x.message); }
+    });
+
+    document.addEventListener('change', async e => {
+      if (!e.target.matches('[data-rate]')) return;
+      if (!me) { toast('Please log in first'); return go('auth'); }
+      if (!+e.target.value) return;
+      try { await api(`/recipes/${cur.id}/rate`, { method: 'POST', body: { value: +e.target.value } }); recipe(cur.id); } catch (x) { toast(x.message); }
+    });
+
+    document.addEventListener('submit', async e => {
+      const kind = e.target.dataset.form; if (!kind) return;
+      e.preventDefault();
+      const f = new FormData(e.target);
+      try {
+        if (kind === 'search') { q = { q: f.get('q'), category: f.get('category'), sort: f.get('sort'), page: 1 }; return home(); }
+        if (kind === 'auth') {
+          const body = Object.fromEntries(f);
+          setUser(await api('/auth/' + authMode, { method: 'POST', body }));
+          toast('Welcome, ' + me.username); return go('home');
+        }
+        if (kind === 'comment') { await api(`/recipes/${cur.id}/comments`, { method: 'POST', body: { text: f.get('text') } }); return recipe(cur.id); }
+        if (kind === 'add') {
+          const lines = k => f.get(k).split('\n').map(s => s.trim()).filter(Boolean);
+          f.set('ingredients', JSON.stringify(lines('ingredients').map(l => { const [a, ...b] = l.split('|'); return b.length ? { quantity: a.trim(), name: b.join('|').trim() } : { name: a, quantity: '' }; })));
+          f.set('steps', JSON.stringify(lines('steps')));
+          if (!f.get('image').size) f.delete('image');
+          const r = await api('/recipes', { method: 'POST', body: f });
+          toast('Recipe published!'); go('recipe', r._id);
+        }
+      } catch (x) { toast(x.message); }
+    });
+
+    go('home');
+  </script>
+</body>
+
+</html>
